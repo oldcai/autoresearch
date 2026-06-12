@@ -21,6 +21,8 @@ EDGE_THRESHOLD = 0.05        # required |theo - market| mispricing
 ORDER_USD = 25.0             # notional per signal per step
 MAX_POS_USD = 300.0          # max cost basis per market
 PRICE_BAND = (0.03, 0.97)    # only act on prints inside this band
+MONO_MARGIN = 0.03           # above-ladder monotonicity violation threshold
+MONO_DAY_BUDGET = 100.0      # max arb notional per UTC day
 FAVORITE_MIN = 0.70          # only buy a side already priced at least this
 EXIT_EDGE = -0.05            # sell a held side when theo - market falls below this
 REENTRY_BLOCK_MIN = 1080     # no re-entry this long after an edge-reversal exit
@@ -38,6 +40,7 @@ class Strategy:
     def __init__(self):
         self._vol_cache = {}
         self._blocked_until = {}
+        self._arb_spend = {}
 
     def _sigma_per_min(self, obs, ai):
         key = (ai, int(obs.t // 300))
@@ -101,6 +104,28 @@ class Strategy:
                 usd = scale * min(ORDER_USD * -edge / EDGE_THRESHOLD, 4 * ORDER_USD)
                 orders.append((int(obs.idx[j]), 'BUY_NO', usd,
                                min(1 - p_mkt + 0.01, 0.99)))
+        # cross-strike consistency arb under a daily budget
+        from collections import defaultdict
+        day = int(obs.t // 86400)
+        spent = self._arb_spend.get(day, 0.0)
+        if spent < MONO_DAY_BUDGET:
+            groups = defaultdict(list)
+            for j in range(len(obs.idx)):
+                if (obs.kind[j] == 0 and not np.isnan(obs.price[j])
+                        and obs.age_min[j] <= 5 and not np.isnan(obs.strike[j])):
+                    groups[(int(obs.asset[j]), float(obs.expiry[j]))].append(j)
+            for js in groups.values():
+                js.sort(key=lambda j: obs.strike[j])
+                for a, b in zip(js, js[1:]):
+                    if spent >= MONO_DAY_BUDGET:
+                        break
+                    if obs.price[a] + MONO_MARGIN < obs.price[b] and obs.cash > 2 * ORDER_USD:
+                        orders.append((int(obs.idx[a]), 'BUY_YES', ORDER_USD,
+                                       min(obs.price[a] + 0.01, 0.99)))
+                        orders.append((int(obs.idx[b]), 'BUY_NO', ORDER_USD,
+                                       min(1 - obs.price[b] + 0.01, 0.99)))
+                        spent += 2 * ORDER_USD
+            self._arb_spend[day] = spent
         return orders
 
 
