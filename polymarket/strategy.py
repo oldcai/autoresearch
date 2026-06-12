@@ -87,11 +87,11 @@ class Strategy:
             if edge > EDGE_THRESHOLD and p_mkt >= FAVORITE_MIN:
                 usd = scale * min(ORDER_USD * edge / EDGE_THRESHOLD, 4 * ORDER_USD)
                 orders.append((int(obs.idx[j]), 'BUY_YES', usd,
-                               min(p_mkt + 0.02, 0.99)))
+                               min(p_mkt + 0.01, 0.99)))
             elif -edge > EDGE_THRESHOLD and p_mkt <= 1 - FAVORITE_MIN:
                 usd = scale * min(ORDER_USD * -edge / EDGE_THRESHOLD, 4 * ORDER_USD)
                 orders.append((int(obs.idx[j]), 'BUY_NO', usd,
-                               min(1 - p_mkt + 0.02, 0.99)))
+                               min(1 - p_mkt + 0.01, 0.99)))
         return orders
 
 
