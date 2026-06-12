@@ -23,6 +23,7 @@ MAX_POS_USD = 300.0          # max cost basis per market
 PRICE_BAND = (0.03, 0.97)    # only act on prints inside this band
 FAVORITE_MIN = 0.70          # only buy a side already priced at least this
 EXIT_EDGE = -0.05            # sell a held side when theo - market falls below this
+REENTRY_BLOCK_MIN = 360      # no re-entry this long after an edge-reversal exit
 MAX_AGE_MIN = 30.0           # ignore prints staler than this
 MIN_TTE_MIN = 10.0           # stop trading this close to expiry
 VOL_FLOOR = 1e-5             # per-minute log-vol floor
@@ -35,6 +36,7 @@ def _phi(x):
 class Strategy:
     def __init__(self):
         self._vol_cache = {}
+        self._blocked_until = {}
 
     def _sigma_per_min(self, obs, ai):
         key = (ai, int(obs.t // 300))
@@ -65,10 +67,14 @@ class Strategy:
             if obs.pos_yes[j] > 0 and edge < EXIT_EDGE:
                 orders.append((int(obs.idx[j]), 'SELL_YES',
                                obs.pos_yes[j] * p_mkt, None))
+                self._blocked_until[int(obs.idx[j])] = obs.t + REENTRY_BLOCK_MIN * 60
                 continue
             if obs.pos_no[j] > 0 and -edge < EXIT_EDGE:
                 orders.append((int(obs.idx[j]), 'SELL_NO',
                                obs.pos_no[j] * (1 - p_mkt), None))
+                self._blocked_until[int(obs.idx[j])] = obs.t + REENTRY_BLOCK_MIN * 60
+                continue
+            if self._blocked_until.get(int(obs.idx[j]), 0) > obs.t:
                 continue
             cost = obs.pos_yes[j] * p_mkt + obs.pos_no[j] * (1 - p_mkt)
             if cost >= MAX_POS_USD or obs.cash < ORDER_USD:
