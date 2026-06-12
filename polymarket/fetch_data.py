@@ -107,7 +107,8 @@ def fetch_prices(markets):
     for i, m in enumerate(markets):
         if m['cid'] in done:
             continue
-        r = get(f"https://clob.polymarket.com/prices-history?market={m['token_yes']}&interval=max&fidelity=1")
+        r = get(f"https://clob.polymarket.com/prices-history?market={m['token_yes']}"
+                f"&startTs={int(m['created']) - 3600}&endTs={int(m['expiry']) + 3600}&fidelity=1")
         h = (r or {}).get('history') or []
         series = [[round(p['t']), round(p['p'], 4)] for p in h]
         done[m['cid']] = series
