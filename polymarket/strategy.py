@@ -27,6 +27,7 @@ REENTRY_BLOCK_MIN = 1080     # no re-entry this long after an edge-reversal exit
 MAX_AGE_MIN = 30.0           # ignore prints staler than this
 MIN_TTE_MIN = 60.0           # stop trading this close to expiry
 VOL_FLOOR = 1e-5             # per-minute log-vol floor
+REGIME_MAX = 2.0             # skip entries when 60min vol / 720min vol exceeds this
 
 
 def _phi(x):
@@ -43,7 +44,9 @@ class Strategy:
         if key not in self._vol_cache:
             c = obs.closes(ai, VOL_LOOKBACK_MIN)
             r = np.diff(np.log(np.maximum(c, 1e-9)))
-            self._vol_cache = {key: max(float(r.std()), VOL_FLOOR)}
+            v_long = max(float(r.std()), VOL_FLOOR)
+            v_short = max(float(r[-60:].std()), VOL_FLOOR) if len(r) > 60 else v_long
+            self._vol_cache = {key: (v_long, v_short / v_long)}
         return self._vol_cache[key]
 
     def on_step(self, obs):
@@ -51,7 +54,8 @@ class Strategy:
         equity = obs.cash + float(np.sum(obs.pos_yes * np.nan_to_num(obs.price, nan=0.5)
                                          + obs.pos_no * (1 - np.nan_to_num(obs.price, nan=0.5))))
         scale = max(1.0, equity / 10_000.0)
-        sig = {ai: self._sigma_per_min(obs, ai) for ai in (0, 1)}
+        sig = {ai: self._sigma_per_min(obs, ai)[0] for ai in (0, 1)}
+        regime = {ai: self._sigma_per_min(obs, ai)[1] for ai in (0, 1)}
         spot = {ai: obs.spot(ai) for ai in (0, 1)}
         for j in range(len(obs.idx)):
             p_mkt = obs.price[j]
@@ -62,6 +66,7 @@ class Strategy:
                 continue
             ai = int(obs.asset[j])
             s, k = spot[ai], obs.strike[j]
+            unstable = regime[ai] > REGIME_MAX
             vol = sig[ai] * math.sqrt(max(obs.tte_min[j], 1.0))
             d2 = (math.log(s / k) - 0.5 * vol * vol) / vol
             theo = _phi(d2)
@@ -84,6 +89,8 @@ class Strategy:
                 continue
             # favorite-side only: buy the high-probability side when the
             # model says it is still underpriced (sell tails, never buy them)
+            if unstable:
+                continue
             if edge > EDGE_THRESHOLD and p_mkt >= FAVORITE_MIN:
                 usd = scale * min(ORDER_USD * edge / EDGE_THRESHOLD, 4 * ORDER_USD)
                 orders.append((int(obs.idx[j]), 'BUY_YES', usd,
