@@ -19,7 +19,7 @@ from prepare import evaluate
 VOL_LOOKBACK_MIN = 720       # minutes of Binance history for realized vol
 EDGE_THRESHOLD = 0.05        # required |theo - market| mispricing
 ORDER_USD = 25.0             # notional per signal per step
-MAX_POS_USD = 150.0          # max cost basis per market
+MAX_POS_USD = 300.0          # max cost basis per market
 PRICE_BAND = (0.03, 0.97)    # only act on prints inside this band
 FAVORITE_MIN = 0.70          # only buy a side already priced at least this
 EXIT_EDGE = -0.05            # sell a held side when theo - market falls below this
