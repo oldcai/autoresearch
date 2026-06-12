@@ -25,7 +25,7 @@ FAVORITE_MIN = 0.70          # only buy a side already priced at least this
 EXIT_EDGE = -0.05            # sell a held side when theo - market falls below this
 REENTRY_BLOCK_MIN = 360      # no re-entry this long after an edge-reversal exit
 MAX_AGE_MIN = 30.0           # ignore prints staler than this
-MIN_TTE_MIN = 10.0           # stop trading this close to expiry
+MIN_TTE_MIN = 60.0           # stop trading this close to expiry
 VOL_FLOOR = 1e-5             # per-minute log-vol floor
 
 
