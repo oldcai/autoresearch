@@ -91,6 +91,8 @@ class Strategy:
             # model says it is still underpriced (sell tails, never buy them)
             if unstable:
                 continue
+            if obs.age_min[j] >= 5 and abs(edge) < 1.5 * EDGE_THRESHOLD:
+                continue   # stale repeat without strong edge: skip churn
             if edge > EDGE_THRESHOLD and p_mkt >= FAVORITE_MIN:
                 usd = scale * min(ORDER_USD * edge / EDGE_THRESHOLD, 4 * ORDER_USD)
                 orders.append((int(obs.idx[j]), 'BUY_YES', usd,
