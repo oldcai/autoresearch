@@ -81,7 +81,13 @@ class Data:
         cat = json.load(open(os.path.join(CACHE, 'markets.json')))
         pz = np.load(os.path.join(CACHE, 'prices.npz'), allow_pickle=False)
         ids = {c: i for i, c in enumerate(pz['ids'].tolist())}
-        keep = [m for m in cat if m['resolved'] and m['cid'] in ids]
+        def _date_ok(m):
+            # guard against year-less event slugs resolving to a prior year's
+            # edition: expiry must sit near the enumerated calendar date
+            noon = datetime.fromisoformat(m['date']).replace(
+                tzinfo=timezone.utc).timestamp() + 16 * 3600
+            return abs(m['expiry'] - noon) < 2 * 86400
+        keep = [m for m in cat if m['resolved'] and m['cid'] in ids and _date_ok(m)]
         self.markets = keep
         n = len(keep)
         self.kind = np.array([m['kind'] for m in keep], dtype=np.int8)
@@ -124,7 +130,7 @@ class Data:
 
     def spot_idx(self, ai, t):
         k = self.binance[ai]
-        return min(int((t - k[0, 0]) // 60), len(k) - 1)
+        return max(0, min(int((t - k[0, 0]) // 60), len(k) - 1))
 
 
 _DATA = None

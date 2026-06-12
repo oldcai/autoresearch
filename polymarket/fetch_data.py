@@ -71,7 +71,12 @@ def fetch_catalog(start, end):
                     try:
                         toks = json.loads(m['clobTokenIds'])
                         op = json.loads(m.get('outcomePrices') or '[]')
-                    except (KeyError, json.JSONDecodeError):
+                        # year-less slugs can resolve to a prior year's event
+                        if abs(iso_ts(m['endDate']) - datetime(
+                                d.year, d.month, d.day, 16,
+                                tzinfo=timezone.utc).timestamp()) > 2 * 86400:
+                            continue
+                    except (KeyError, json.JSONDecodeError, ValueError):
                         continue
                     resolved = op in (['1', '0'], ['0', '1'])
                     strike = np.nan
