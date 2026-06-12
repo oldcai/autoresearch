@@ -22,6 +22,7 @@ ORDER_USD = 25.0             # notional per signal per step
 MAX_POS_USD = 300.0          # max cost basis per market
 PRICE_BAND = (0.03, 0.97)    # only act on prints inside this band
 MONO_MARGIN = 0.02           # above-ladder monotonicity violation threshold
+LADDER_RESID = 0.04          # trade strikes deviating this far from the ladder fit
 MONO_DAY_BUDGET = 100.0      # max arb notional per UTC day
 FAVORITE_MIN = 0.70          # only buy a side already priced at least this
 EXIT_EDGE = -0.05            # sell a held side when theo - market falls below this
@@ -125,6 +126,24 @@ class Strategy:
                         orders.append((int(obs.idx[b]), 'BUY_NO', ORDER_USD,
                                        min(1 - obs.price[b] + 0.01, 0.99)))
                         spent += 2 * ORDER_USD
+                # ladder-implied relative value: isotonic (decreasing) fit
+                if len(js) >= 4 and spent < MONO_DAY_BUDGET:
+                    ps = np.array([obs.price[j] for j in js])
+                    fit = np.minimum.accumulate(np.maximum.accumulate(ps[::-1])[::-1])
+                    # average of forward cummin and backward cummax envelopes
+                    fit = 0.5 * (fit + np.maximum.accumulate(ps[::-1])[::-1])
+                    for j, pj, fj in zip(js, ps, fit):
+                        if spent >= MONO_DAY_BUDGET or obs.cash < ORDER_USD:
+                            break
+                        r = fj - pj
+                        if r > LADDER_RESID and pj >= FAVORITE_MIN:
+                            orders.append((int(obs.idx[j]), 'BUY_YES', ORDER_USD,
+                                           min(pj + 0.01, 0.99)))
+                            spent += ORDER_USD
+                        elif -r > LADDER_RESID and pj <= 1 - FAVORITE_MIN:
+                            orders.append((int(obs.idx[j]), 'BUY_NO', ORDER_USD,
+                                           min(1 - pj + 0.01, 0.99)))
+                            spent += ORDER_USD
             self._arb_spend[day] = spent
         return orders
 
