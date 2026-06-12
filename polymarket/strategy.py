@@ -48,6 +48,9 @@ class Strategy:
 
     def on_step(self, obs):
         orders = []
+        equity = obs.cash + float(np.sum(obs.pos_yes * np.nan_to_num(obs.price, nan=0.5)
+                                         + obs.pos_no * (1 - np.nan_to_num(obs.price, nan=0.5))))
+        scale = max(1.0, equity / 10_000.0)
         sig = {ai: self._sigma_per_min(obs, ai) for ai in (0, 1)}
         spot = {ai: obs.spot(ai) for ai in (0, 1)}
         for j in range(len(obs.idx)):
@@ -82,11 +85,11 @@ class Strategy:
             # favorite-side only: buy the high-probability side when the
             # model says it is still underpriced (sell tails, never buy them)
             if edge > EDGE_THRESHOLD and p_mkt >= FAVORITE_MIN:
-                usd = min(ORDER_USD * edge / EDGE_THRESHOLD, 4 * ORDER_USD)
+                usd = scale * min(ORDER_USD * edge / EDGE_THRESHOLD, 4 * ORDER_USD)
                 orders.append((int(obs.idx[j]), 'BUY_YES', usd,
                                min(p_mkt + 0.02, 0.99)))
             elif -edge > EDGE_THRESHOLD and p_mkt <= 1 - FAVORITE_MIN:
-                usd = min(ORDER_USD * -edge / EDGE_THRESHOLD, 4 * ORDER_USD)
+                usd = scale * min(ORDER_USD * -edge / EDGE_THRESHOLD, 4 * ORDER_USD)
                 orders.append((int(obs.idx[j]), 'BUY_NO', usd,
                                min(1 - p_mkt + 0.02, 0.99)))
         return orders
