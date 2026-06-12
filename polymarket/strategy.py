@@ -22,6 +22,7 @@ ORDER_USD = 25.0             # notional per signal per step
 MAX_POS_USD = 150.0          # max cost basis per market
 PRICE_BAND = (0.03, 0.97)    # only act on prints inside this band
 FAVORITE_MIN = 0.70          # only buy a side already priced at least this
+EXIT_EDGE = -0.05            # sell a held side when theo - market falls below this
 MAX_AGE_MIN = 30.0           # ignore prints staler than this
 MIN_TTE_MIN = 10.0           # stop trading this close to expiry
 VOL_FLOOR = 1e-5             # per-minute log-vol floor
@@ -60,6 +61,15 @@ class Strategy:
             d2 = (math.log(s / k) - 0.5 * vol * vol) / vol
             theo = _phi(d2)
             edge = theo - p_mkt
+            # cut losers: edge has reversed against a held position
+            if obs.pos_yes[j] > 0 and edge < EXIT_EDGE:
+                orders.append((int(obs.idx[j]), 'SELL_YES',
+                               obs.pos_yes[j] * p_mkt, None))
+                continue
+            if obs.pos_no[j] > 0 and -edge < EXIT_EDGE:
+                orders.append((int(obs.idx[j]), 'SELL_NO',
+                               obs.pos_no[j] * (1 - p_mkt), None))
+                continue
             cost = obs.pos_yes[j] * p_mkt + obs.pos_no[j] * (1 - p_mkt)
             if cost >= MAX_POS_USD or obs.cash < ORDER_USD:
                 continue
