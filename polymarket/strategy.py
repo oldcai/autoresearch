@@ -21,6 +21,7 @@ EDGE_THRESHOLD = 0.05        # required |theo - market| mispricing
 ORDER_USD = 25.0             # notional per signal per step
 MAX_POS_USD = 150.0          # max cost basis per market
 PRICE_BAND = (0.03, 0.97)    # only act on prints inside this band
+FAVORITE_MIN = 0.70          # only buy a side already priced at least this
 MAX_AGE_MIN = 30.0           # ignore prints staler than this
 MIN_TTE_MIN = 10.0           # stop trading this close to expiry
 VOL_FLOOR = 1e-5             # per-minute log-vol floor
@@ -62,10 +63,12 @@ class Strategy:
             cost = obs.pos_yes[j] * p_mkt + obs.pos_no[j] * (1 - p_mkt)
             if cost >= MAX_POS_USD or obs.cash < ORDER_USD:
                 continue
-            if edge > EDGE_THRESHOLD:
+            # favorite-side only: buy the high-probability side when the
+            # model says it is still underpriced (sell tails, never buy them)
+            if edge > EDGE_THRESHOLD and p_mkt >= FAVORITE_MIN:
                 orders.append((int(obs.idx[j]), 'BUY_YES', ORDER_USD,
                                min(p_mkt + 0.02, 0.99)))
-            elif -edge > EDGE_THRESHOLD:
+            elif -edge > EDGE_THRESHOLD and p_mkt <= 1 - FAVORITE_MIN:
                 orders.append((int(obs.idx[j]), 'BUY_NO', ORDER_USD,
                                min(1 - p_mkt + 0.02, 0.99)))
         return orders
