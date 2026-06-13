@@ -111,7 +111,7 @@ class Strategy:
         day = int(obs.t // 86400)
         spent = self._arb_spend.get(day, 0.0)
         spent_l = self._arb_spend.get(('L', day), 0.0)
-        if spent < MONO_DAY_BUDGET:
+        if spent < MONO_DAY_BUDGET or spent_l < LADDER_BUDGET:
             groups = defaultdict(list)
             for j in range(len(obs.idx)):
                 if (obs.kind[j] == 0 and not np.isnan(obs.price[j])
