@@ -21,9 +21,9 @@ from zoneinfo import ZoneInfo
 import numpy as np
 
 CACHE = os.path.expanduser('~/.cache/autopoly')
-START = date(2026, 3, 1)    # first market expiry date to include
+START = date(2025, 12, 1)   # first market expiry date to include (~6.5mo history)
 END = date(2026, 6, 12)     # last expiry date (inclusive, must be resolved)
-BINANCE_START = date(2026, 2, 15)  # earlier, for vol warm-up
+BINANCE_START = date(2025, 11, 15)  # earlier, for vol warm-up
 ASSETS = [('bitcoin', 'BTCUSDT'), ('ethereum', 'ETHUSDT')]
 NY = ZoneInfo('America/New_York')
 UA = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
