@@ -34,6 +34,8 @@ MIN_TTE_MIN = 60.0           # stop trading this close to expiry
 VOL_FLOOR = 1e-5             # per-minute log-vol floor
 REGIME_MAX = 2.0             # skip entries when 60min vol / lookback vol exceeds this
 ASSET_CAP_USD = float(os.environ.get('ASSET_CAP_USD', '0'))  # max marked exposure per asset; 0 = off
+THICK_MULT = float(os.environ.get('RUNNER_THICK_MULT', '2.4'))
+THIN_POS_CAP_FRAC = float(os.environ.get('RUNNER_THIN_POS_CAP_FRAC', '0.25'))
 
 
 def _phi(x):
@@ -83,6 +85,41 @@ class Strategy:
             asset_exp[ai] = asset_exp.get(ai, 0.0) + usd
             return usd
 
+        order_base = ORDER_USD * scale
+        thin_pos_cap_usd = MAX_POS_USD * THIN_POS_CAP_FRAC
+
+        def thin_cap_allows(j, usd):
+            p = obs.price[j]
+            if np.isnan(p):
+                return False
+            cost = obs.pos_yes[j] * p + obs.pos_no[j] * (1 - p)
+            thick = usd >= THICK_MULT * order_base
+            return thick or cost < thin_pos_cap_usd - 1e-9
+
+        def buy_order(j, side, usd, limit):
+            if not thin_cap_allows(j, usd):
+                return 0.0
+            usd = cap_buy(int(obs.asset[j]), usd)
+            if usd <= 0:
+                return 0.0
+            orders.append((int(obs.idx[j]), side, usd, limit))
+            return usd
+
+        def buy_pair(a, b):
+            if not (thin_cap_allows(a, ORDER_USD) and thin_cap_allows(b, ORDER_USD)):
+                return 0.0
+            ai = int(obs.asset[a])
+            if ASSET_CAP_USD > 0:
+                room = ASSET_CAP_USD - asset_exp.get(ai, 0.0)
+                if room < 2 * ORDER_USD:
+                    return 0.0
+                asset_exp[ai] = asset_exp.get(ai, 0.0) + 2 * ORDER_USD
+            orders.append((int(obs.idx[a]), 'BUY_YES', ORDER_USD,
+                           min(obs.price[a] + 0.01, 0.99)))
+            orders.append((int(obs.idx[b]), 'BUY_NO', ORDER_USD,
+                           min(1 - obs.price[b] + 0.01, 0.99)))
+            return 2 * ORDER_USD
+
         for j in range(len(obs.idx)):
             p_mkt = obs.price[j]
             if (np.isnan(p_mkt) or np.isnan(obs.strike[j])
@@ -121,16 +158,10 @@ class Strategy:
                 continue   # stale repeat without strong edge: skip churn
             if edge > EDGE_THRESHOLD and p_mkt >= FAVORITE_MIN:
                 usd = scale * min(ORDER_USD * edge / EDGE_THRESHOLD, 4 * ORDER_USD)
-                usd = cap_buy(ai, usd)
-                if usd > 0:
-                    orders.append((int(obs.idx[j]), 'BUY_YES', usd,
-                                   min(p_mkt + 0.01, 0.99)))
+                buy_order(j, 'BUY_YES', usd, min(p_mkt + 0.01, 0.99))
             elif -edge > EDGE_THRESHOLD and p_mkt <= 1 - FAVORITE_MIN:
                 usd = scale * min(ORDER_USD * -edge / EDGE_THRESHOLD, 4 * ORDER_USD)
-                usd = cap_buy(ai, usd)
-                if usd > 0:
-                    orders.append((int(obs.idx[j]), 'BUY_NO', usd,
-                                   min(1 - p_mkt + 0.01, 0.99)))
+                buy_order(j, 'BUY_NO', usd, min(1 - p_mkt + 0.01, 0.99))
         # cross-strike consistency arb under a daily budget
         from collections import defaultdict
         day = int(obs.t // 86400)
@@ -148,17 +179,7 @@ class Strategy:
                     if spent >= MONO_DAY_BUDGET:
                         break
                     if obs.price[a] + MONO_MARGIN < obs.price[b] and obs.cash > 2 * ORDER_USD:
-                        ai = int(obs.asset[a])
-                        if ASSET_CAP_USD > 0:
-                            room = ASSET_CAP_USD - asset_exp.get(ai, 0.0)
-                            if room < 2 * ORDER_USD:
-                                continue
-                            asset_exp[ai] = asset_exp.get(ai, 0.0) + 2 * ORDER_USD
-                        orders.append((int(obs.idx[a]), 'BUY_YES', ORDER_USD,
-                                       min(obs.price[a] + 0.01, 0.99)))
-                        orders.append((int(obs.idx[b]), 'BUY_NO', ORDER_USD,
-                                       min(1 - obs.price[b] + 0.01, 0.99)))
-                        spent += 2 * ORDER_USD
+                        spent += buy_pair(a, b)
                 # ladder-implied relative value: isotonic (decreasing) fit
                 if len(js) >= 4 and spent_l < LADDER_BUDGET:
                     ps = np.array([obs.price[j] for j in js])
@@ -169,19 +190,10 @@ class Strategy:
                         if spent_l >= LADDER_BUDGET or obs.cash < ORDER_USD:
                             break
                         r = fj - pj
-                        ai = int(obs.asset[j])
                         if r > LADDER_RESID and pj >= FAVORITE_MIN:
-                            usd = cap_buy(ai, ORDER_USD)
-                            if usd > 0:
-                                orders.append((int(obs.idx[j]), 'BUY_YES', usd,
-                                               min(pj + 0.01, 0.99)))
-                                spent_l += usd
+                            spent_l += buy_order(j, 'BUY_YES', ORDER_USD, min(pj + 0.01, 0.99))
                         elif -r > LADDER_RESID and pj <= 1 - FAVORITE_MIN:
-                            usd = cap_buy(ai, ORDER_USD)
-                            if usd > 0:
-                                orders.append((int(obs.idx[j]), 'BUY_NO', usd,
-                                               min(1 - pj + 0.01, 0.99)))
-                                spent_l += usd
+                            spent_l += buy_order(j, 'BUY_NO', ORDER_USD, min(1 - pj + 0.01, 0.99))
             self._arb_spend[day] = spent
             self._arb_spend[('L', day)] = spent_l
         return orders
