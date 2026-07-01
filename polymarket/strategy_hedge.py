@@ -21,7 +21,7 @@ HEDGE_BUDGET = float(os.environ.get('HEDGE_BUDGET', '24'))        # per-asset-pe
 HEDGE_MAX_PRICE = float(os.environ.get('HEDGE_MAX_PRICE', '0.30'))  # only buy if the NO leg is this cheap (execution discipline)
 
 # ----------------------- hyperparameters (edit me) -------------------------
-VOL_LOOKBACK_MIN = 720       # minutes of Binance history for realized vol
+VOL_LOOKBACK_MIN = 4320      # minutes of Binance history for realized vol
 EDGE_THRESHOLD = 0.05        # required |theo - market| mispricing
 ORDER_USD = 25.0             # notional per signal per step
 MAX_POS_USD = 300.0          # max cost basis per market
@@ -36,7 +36,7 @@ REENTRY_BLOCK_MIN = 1080     # no re-entry this long after an edge-reversal exit
 MAX_AGE_MIN = 30.0           # ignore prints staler than this
 MIN_TTE_MIN = 60.0           # stop trading this close to expiry
 VOL_FLOOR = 1e-5             # per-minute log-vol floor
-REGIME_MAX = 2.0             # skip entries when 60min vol / 720min vol exceeds this
+REGIME_MAX = 2.0             # skip entries when 60min vol / lookback vol exceeds this
 
 
 def _phi(x):
